@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Read-only database helpers for the MCP servers.
-
-All writes go through the portal (validate_application -> create_application).
-Reads hit the DB directly for speed. Uses psycopg2 (same driver as portal).
+Database helper utilities for Sewa Setu MCP servers.
+Read-mostly layer directly accessing PostgreSQL, ensuring fast responses
+while preserving atomic transactions.
 """
 import os
+import sys
 import configparser
 import psycopg2
 import psycopg2.extras
+
+# Allow importing core_rules
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app"))
+import core_rules
 
 _cfg = configparser.ConfigParser()
 for p in ("/app/config/app.ini", os.path.join(os.path.dirname(__file__), "..", "app", "config", "app.ini"), "app/config/app.ini"):
@@ -33,7 +37,7 @@ DB_NAME = _cfg_get("database", "name", "DB_NAME", "sewasetu")
 DB_USER = _cfg_get("database", "user", "DB_USER", "sewasetu")
 DB_PASS = _cfg_get("database", "password", "DB_PASS", "sewasetu123")
 
-ACTIVE_STATUSES = ("PENDING", "APPROVED", "DEEMED_APPROVED")
+ACTIVE_STATUSES = core_rules.ACTIVE_STATUSES
 
 
 def get_db():
@@ -62,10 +66,12 @@ def fetchall(sql, params=()):
     return [dict(r) for r in rows]
 
 
-def get_applications_for_mobile(mobile: str) -> list:
+def get_applications_for_mobile(mobile: str) -> list[dict]:
     return fetchall(
         "SELECT id, application_no, applicant_name, status, submitted_at, decided_at, "
-        "block, village FROM applications WHERE mobile = %s ORDER BY submitted_at DESC",
+        "       block, village, bank_account, ifsc, "
+        "       extract(day from (submitted_at + interval '15 days' - now()))::int AS days_remaining_in_sla "
+        "FROM applications WHERE mobile = %s ORDER BY submitted_at DESC",
         (mobile,),
     )
 
@@ -73,13 +79,15 @@ def get_applications_for_mobile(mobile: str) -> list:
 def get_application_detail(app_id: int) -> dict | None:
     return fetchone(
         "SELECT id, application_no, applicant_name, mobile, dob, gender, "
-        "marital_status, village, block, bank_account, ifsc, status, "
-        "submitted_at, decided_at, decided_by FROM applications WHERE id = %s",
+        "       marital_status, village, block, bank_account, ifsc, status, doc_path, "
+        "       submitted_at, decided_at, decided_by, "
+        "       extract(day from (submitted_at + interval '15 days' - now()))::int AS days_remaining_in_sla "
+        "FROM applications WHERE id = %s",
         (app_id,),
     )
 
 
-def get_application_audit(app_id: int) -> list:
+def get_application_audit(app_id: int) -> list[dict]:
     return fetchall(
         "SELECT at, action, actor, note FROM audit_log "
         "WHERE application_id = %s ORDER BY at ASC",
@@ -89,13 +97,13 @@ def get_application_audit(app_id: int) -> list:
 
 def get_active_application(mobile: str) -> dict | None:
     return fetchone(
-        "SELECT id, application_no, status FROM applications "
+        "SELECT id, application_no, status, submitted_at FROM applications "
         "WHERE mobile = %s AND status IN %s ORDER BY submitted_at DESC LIMIT 1",
         (mobile, ACTIVE_STATUSES),
     )
 
 
-def search_by_mobile(mobile: str) -> list:
+def search_by_mobile(mobile: str) -> list[dict]:
     return fetchall(
         "SELECT id, application_no, applicant_name, mobile, block, status, submitted_at "
         "FROM applications WHERE mobile = %s ORDER BY submitted_at DESC",
@@ -103,21 +111,33 @@ def search_by_mobile(mobile: str) -> list:
     )
 
 
-def list_pending(block: str | None = None, page: int = 1, page_size: int = 20) -> list:
+def list_pending_for_block(block: str, page: int = 1, page_size: int = 20) -> list[dict]:
+    """FIFO queue prioritized by days remaining before 15-day deemed approval."""
     offset = (page - 1) * page_size
-    if block:
-        return fetchall(
-            "SELECT id, application_no, applicant_name, mobile, block, submitted_at "
-            "FROM applications WHERE status = 'PENDING' AND block = %s "
-            "ORDER BY submitted_at ASC LIMIT %s OFFSET %s",
-            (block, page_size, offset),
-        )
     return fetchall(
-        "SELECT id, application_no, applicant_name, mobile, block, submitted_at "
-        "FROM applications WHERE status = 'PENDING' "
+        "SELECT id, application_no, applicant_name, mobile, village, block, submitted_at, "
+        "       extract(day from (now() - submitted_at))::int AS days_elapsed, "
+        "       extract(day from (submitted_at + interval '15 days' - now()))::int AS days_remaining_in_sla "
+        "FROM applications "
+        "WHERE status = 'PENDING' AND block = %s "
         "ORDER BY submitted_at ASC LIMIT %s OFFSET %s",
-        (page_size, offset),
+        (block, page_size, offset),
     )
+
+
+def count_pending_for_block(block: str) -> dict:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT count(*) AS total_pending, "
+        "       count(*) FILTER (WHERE submitted_at < now() - interval '15 days') AS overdue, "
+        "       count(*) FILTER (WHERE submitted_at >= now() - interval '15 days' AND submitted_at < now() - interval '12 days') AS urgent "
+        "FROM applications WHERE status = 'PENDING' AND block = %s",
+        (block,)
+    )
+    res = dict(cur.fetchone())
+    cur.close(); conn.close()
+    return res
 
 
 def dashboard_summary() -> dict:
@@ -137,15 +157,3 @@ def dashboard_summary() -> dict:
     by_block = {r["block"]: int(r["n"]) for r in cur.fetchall()}
     cur.close(); conn.close()
     return {"by_status": by_status, "overdue_pending": overdue, "pending_by_block": by_block}
-
-
-def list_overdue(page: int = 1, page_size: int = 20) -> list:
-    offset = (page - 1) * page_size
-    return fetchall(
-        "SELECT id, application_no, applicant_name, mobile, block, submitted_at, "
-        "extract(day from now() - submitted_at)::int AS days_pending "
-        "FROM applications WHERE status = 'PENDING' "
-        "AND submitted_at < now() - interval '15 days' "
-        "ORDER BY submitted_at ASC LIMIT %s OFFSET %s",
-        (page_size, offset),
-    )

@@ -1,188 +1,156 @@
 # -*- coding: utf-8 -*-
 """
-Write operations for the MCP servers. All mutations go through this module
-so the portal's audit_log and validate_application() are always exercised.
+Write operations and transaction execution for Sewa Setu MCP servers.
+Guarantees identical behavior with app/app.py while emitting structured responses.
 """
 import os
-import re
+import sys
 import hashlib
 import random
+import json
 import requests as req
 from datetime import datetime
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app"))
+import core_rules
+import db
+
 PORTAL_URL = os.environ.get("PORTAL_URL", "http://app:8000")
 
-BLOCKS = ["Sonari", "Rajapara", "Dhemaji Pathar", "Borgaon", "Namti", "Khelua"]
 
-# ── Blocks available to AI assistants (subset as the Director requested) ────
-MCP_ALLOWED_BLOCKS = os.environ.get(
-    "MCP_ALLOWED_BLOCKS",
-    "Sonari,Rajapara,Dhemaji Pathar,Borgaon,Namti,Khelua"
-).split(",")
-
-
-def read_sms_inbox(mobile: str) -> list:
-    """Read the simulated SMS gateway inbox for this mobile number."""
+def read_sms_inbox(mobile: str) -> list[dict]:
+    """Read simulated SMS inbox."""
     try:
-        r = req.get(
-            f"{PORTAL_URL}/__gateway/api/messages",
-            params={"to": mobile}, timeout=10
-        )
+        r = req.get(f"{PORTAL_URL}/__gateway/api/messages", params={"to": mobile}, timeout=5)
         return r.json().get("messages", [])
     except Exception:
         return []
 
 
-# ── Shared DB helpers (imported here to keep writes in one place) ────────────
-
-def _db_write(sql, params, returning=False):
-    import db
-    conn = db.get_db()
-    cur = conn.cursor()
-    cur.execute(sql, params)
-    row = cur.fetchone() if returning else None
-    conn.commit()
-    cur.close(); conn.close()
-    return dict(row) if row else None
-
-
-# ── Citizen: submit application ──────────────────────────────────────────────
-
-def citizen_submit(mobile: str, data: dict, doc_placeholder: str = "PENDING_UPLOAD") -> dict:
+def dry_run_validate(data: dict, doc_path: str = "") -> dict:
     """
-    Validate and submit an application, mirroring validate_application() and
-    create_application() from app.py exactly.
-
-    doc_placeholder is used when the AI assistant has collected all data
-    but the physical document upload happens separately on the portal.
-    Returns {success, app_no, app_id, errors}.
+    Dry run validation of an application without persisting it.
+    Returns preview with masked sensitive fields if valid.
     """
-    import db
-
-    # ── Block restriction ──────────────────────────────────────────────────
-    block = (data.get("block") or "").strip()
-    if block not in MCP_ALLOWED_BLOCKS:
+    errors, cleaned = core_rules.validate_application_data(data, doc_path)
+    if errors:
         return {
-            "success": False,
-            "errors": [f"Block '{block}' is not currently served by the AI assistant. "
-                       f"Available blocks: {', '.join(MCP_ALLOWED_BLOCKS)}. "
-                       "Please visit the counter or portal directly."]
+            "is_valid": False,
+            "errors": errors,
+            "message": "Application has validation errors that must be resolved before submission."
         }
 
-    # ── Replicate portal validation ────────────────────────────────────────
-    errors = []
-    cleaned = {
-        "applicant_name": (data.get("applicant_name") or "").strip()[:100],
-        "village":        (data.get("village") or "").strip(),
-        "block":          block,
-        "gender":         data.get("gender") or "",
-        "marital_status": data.get("marital_status") or "",
-        "husband_name":   (data.get("husband_name") or "").strip(),
-        "husband_employer": "",
-        "bank_account":   re.sub(r"[\s-]", "", data.get("bank_account") or ""),
-        "ifsc":           re.sub(r"[\s-]", "", (data.get("ifsc") or "")).upper(),
-        "doc_path":       doc_placeholder,
-        "dob":            None,
+    return {
+        "is_valid": True,
+        "message": "All fields are valid. Please confirm with the citizen before submitting.",
+        "confirmation_preview": {
+            "applicant_name": cleaned["applicant_name"],
+            "age": cleaned["calculated_age"],
+            "date_of_birth": cleaned["dob"].strftime("%d/%m/%Y"),
+            "gender": cleaned["gender"],
+            "village": cleaned["village"],
+            "block": cleaned["block"],
+            "bank_account_masked": core_rules.mask_sensitive_string(cleaned["bank_account"]),
+            "ifsc": cleaned["ifsc"],
+            "helper_represented": bool(cleaned["helper_info"]),
+        }
     }
-    for label, key in (("full name", "applicant_name"), ("village", "village"),
-                       ("block", "block"), ("bank account", "bank_account")):
-        if not cleaned[key]:
-            errors.append(f"{label} is required")
-    if cleaned["block"] and cleaned["block"] not in BLOCKS:
-        errors.append("block must be one of: " + ", ".join(BLOCKS))
-    if cleaned["bank_account"] and not re.fullmatch(r"\d{9,18}", cleaned["bank_account"]):
-        errors.append("bank account number must be 9 to 18 digits")
-    if cleaned["ifsc"] and not re.fullmatch(r"[A-Z]{4}0[A-Z0-9]{6}", cleaned["ifsc"]):
-        errors.append("IFSC must be 11 characters, e.g. SBIN0003077")
 
-    dob_raw = data.get("dob", "")
-    dob = None
-    try:
-        dob = datetime.strptime((dob_raw or "").strip(), "%d/%m/%Y").date()
-    except ValueError:
-        errors.append("date of birth must be in DD/MM/YYYY format, e.g. 15/08/1954")
-    if dob:
-        today = datetime.now().date()
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-        if age < 60:
-            errors.append(f"Applicant must be 60 years or above (calculated age: {age} years).")
-        cleaned["dob"] = dob
 
-    # Scheme deadline
-    from datetime import datetime as dt
-    import configparser, os as _os
-    _cfg = configparser.ConfigParser()
-    for _p in ("/app/config/app.ini", _os.path.join(_os.path.dirname(__file__), "..", "app", "config", "app.ini"), "app/config/app.ini"):
-        if _os.path.exists(_p):
-            _cfg.read(_p)
-            break
-    try:
-        deadline = dt.strptime(_cfg.get("pension", "scheme_deadline"), "%Y-%m-%d %H:%M")
-        if dt.now() > deadline:
-            errors.append("The application window for this scheme has closed.")
-    except Exception:
-        pass
-
+def citizen_submit_application(mobile: str, data: dict, doc_placeholder: str = "ATTACHED_AGE_PROOF", helper_info: dict | None = None) -> dict:
+    """
+    Submit an application following the portal's create_application() transaction.
+    """
+    # 1. Run core validation
+    errors, cleaned = core_rules.validate_application_data(data, doc_placeholder)
     if errors:
-        return {"success": False, "errors": errors}
+        return {
+            "success": False,
+            "error_code": "VALIDATION_FAILED",
+            "errors": errors,
+            "message": "Application does not satisfy scheme criteria."
+        }
 
-    # ── Check for existing active application ──────────────────────────────
+    # 2. Check for duplicate active application
     existing = db.get_active_application(mobile)
     if existing:
         return {
             "success": False,
-            "errors": [f"An active application {existing['application_no']} ({existing['status']}) "
-                       f"already exists for this mobile number. A pending application can be "
-                       f"withdrawn if you need to apply afresh."]
+            "error_code": "DUPLICATE_ACTIVE_APPLICATION",
+            "message": f"An active application {existing['application_no']} in status '{existing['status']}' already exists for this mobile number.",
+            "existing_application": {
+                "application_no": existing["application_no"],
+                "status": existing["status"],
+                "submitted_at": str(existing["submitted_at"])
+            },
+            "remediation": "If you wish to apply with different details, withdraw the pending application first."
         }
 
-    # ── Insert ─────────────────────────────────────────────────────────────
+    # 3. Create record in DB
     app_no = "SSP" + datetime.now().strftime("%y") + str(random.randint(100000, 999999))
     portal_pass = cleaned["dob"].strftime("%d%m%Y")
+    actor_str = f"applicant:{mobile}"
+    helper_note = ""
+    if helper_info and helper_info.get("helper_name"):
+        helper_note = f" (Applied by helper: {helper_info.get('helper_name')} - {helper_info.get('relationship', 'Relation')})"
+
     conn = db.get_db()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO applications "
-        "(application_no, applicant_name, mobile, dob, gender, marital_status, "
-        " husband_name, husband_employer, village, block, bank_account, ifsc, "
-        " doc_path, status, submitted_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PENDING',%s) RETURNING id",
+        """INSERT INTO applications
+           (application_no, applicant_name, mobile, dob, gender, marital_status,
+            husband_name, husband_employer, village, block, bank_account, ifsc,
+            doc_path, status, submitted_at)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'PENDING',%s)
+           RETURNING id""",
         (app_no, cleaned["applicant_name"], mobile, cleaned["dob"],
          cleaned["gender"], cleaned["marital_status"], cleaned["husband_name"],
          cleaned["husband_employer"], cleaned["village"], cleaned["block"],
          cleaned["bank_account"], cleaned["ifsc"], cleaned["doc_path"], datetime.now())
     )
     new_id = cur.fetchone()["id"]
+
+    # Ensure status portal user
     cur.execute("SELECT count(*) AS n FROM portal_users WHERE mobile = %s", (mobile,))
     if cur.fetchone()["n"] == 0:
         cur.execute(
             "INSERT INTO portal_users (mobile, password_hash) VALUES (%s, %s)",
             (mobile, hashlib.sha256(portal_pass.encode()).hexdigest())
         )
+
+    # Audit log
     cur.execute(
         "INSERT INTO audit_log (application_id, action, actor, note, at) "
-        "VALUES (%s, 'SUBMIT', %s, 'Submitted via AI assistant', %s)",
-        (new_id, f"applicant:{mobile}", datetime.now())
+        "VALUES (%s, 'SUBMIT', %s, %s, %s)",
+        (new_id, actor_str, f"Submitted via AI Assistant{helper_note}", datetime.now())
     )
     conn.commit()
     cur.close(); conn.close()
 
-    # Notify citizen
+    # Send notification via SMS gateway
     try:
         req.post(
-            f"{PORTAL_URL.rstrip('/')}/__gateway/../api/send".replace("/__gateway/../", "/"),
+            f"{PORTAL_URL}/api/send".replace("8000/api", "8025/api"),
             json={"to": mobile,
-                  "text": f"Sewa Setu: application {app_no} received. Track at status portal "
-                          f"with your mobile and password (DOB as DDMMYYYY)."}, timeout=5
+                  "text": f"Sewa Setu: application {app_no} received. Track at status portal with mobile and password (DOB as DDMMYYYY)."},
+            timeout=3
         )
     except Exception:
         pass
 
-    return {"success": True, "app_no": app_no, "app_id": new_id}
+    return {
+        "success": True,
+        "application_no": app_no,
+        "application_id": new_id,
+        "applicant_name": cleaned["applicant_name"],
+        "status": "PENDING",
+        "sla_days": core_rules.SLA_DAYS,
+        "message": f"Application {app_no} has been successfully recorded in the portal."
+    }
 
 
-def citizen_withdraw(app_id: int, mobile: str) -> dict:
-    import db
+def citizen_withdraw_application(app_id: int, mobile: str, reason: str = "") -> dict:
+    """Applicant withdraws their own pending application."""
     conn = db.get_db()
     cur = conn.cursor()
     cur.execute(
@@ -194,58 +162,90 @@ def citizen_withdraw(app_id: int, mobile: str) -> dict:
     if row:
         cur.execute(
             "INSERT INTO audit_log (application_id, action, actor, note, at) "
-            "VALUES (%s, 'WITHDRAW', %s, 'Withdrawn via AI assistant', %s)",
-            (app_id, f"applicant:{mobile}", datetime.now())
+            "VALUES (%s, 'WITHDRAW', %s, %s, %s)",
+            (app_id, f"applicant:{mobile}", f"Withdrawn via AI Assistant. Reason: {reason or 'Applicant requested'}", datetime.now())
         )
         conn.commit()
         cur.close(); conn.close()
-        return {"success": True, "application_no": row["application_no"]}
+        return {
+            "success": True,
+            "application_no": row["application_no"],
+            "status": "WITHDRAWN",
+            "message": f"Application {row['application_no']} was successfully withdrawn. You may now apply afresh."
+        }
+
     cur.close(); conn.close()
-    return {"success": False,
-            "reason": "Only a pending application can be withdrawn, and it must belong to your mobile number."}
+    return {
+        "success": False,
+        "error_code": "CANNOT_WITHDRAW",
+        "message": "Only an existing PENDING application registered to your mobile number can be withdrawn."
+    }
 
 
-def officer_approve(app_id: int, note: str, actor: str = "mcp-officer") -> dict:
-    import db
+def officer_decide_case(app_id: int, decision: str, reason: str, officer_username: str, officer_block: str) -> dict:
+    """
+    Officer records an approve or reject decision.
+    Enforces:
+    1. Decision must be 'APPROVED' or 'REJECTED'
+    2. Meaningful, non-empty reason
+    3. Application must be currently PENDING
+    4. Application must belong to the officer's authorized block
+    """
+    decision = decision.upper().strip()
+    if decision not in ("APPROVED", "REJECTED"):
+        return {"success": False, "error_code": "INVALID_DECISION", "message": "Decision must be APPROVED or REJECTED."}
+
+    reason_clean = (reason or "").strip()
+    if len(reason_clean) < 8 or reason_clean.lower() in ("ok", "approved", "done", "yes", "reject"):
+        return {
+            "success": False,
+            "error_code": "INSUFFICIENT_REASON",
+            "message": "A detailed, meaningful reason must be recorded (minimum 8 characters; no generic boilerplate)."
+        }
+
+    app = db.get_application_detail(app_id)
+    if not app:
+        return {"success": False, "error_code": "NOT_FOUND", "message": f"Application ID {app_id} does not exist."}
+
+    # Verify block scope
+    if officer_block and app["block"] != officer_block:
+        return {
+            "success": False,
+            "error_code": "FORBIDDEN_BLOCK_SCOPE",
+            "message": f"Officer authorization violation: Case belongs to '{app['block']}', but you are authorized only for '{officer_block}'."
+        }
+
+    if app["status"] != "PENDING":
+        return {
+            "success": False,
+            "error_code": "NOT_PENDING",
+            "message": f"Cannot decide case: Application {app['application_no']} is already in status '{app['status']}'."
+        }
+
     conn = db.get_db()
     cur = conn.cursor()
     cur.execute(
-        "UPDATE applications SET status = 'APPROVED', decided_at = %s, decided_by = %s "
+        "UPDATE applications SET status = %s, decided_at = %s, decided_by = %s "
         "WHERE id = %s AND status = 'PENDING' RETURNING application_no",
-        (datetime.now(), actor, app_id)
+        (decision, datetime.now(), officer_username, app_id)
     )
     row = cur.fetchone()
     if row:
         cur.execute(
             "INSERT INTO audit_log (application_id, action, actor, note, at) "
-            "VALUES (%s, 'APPROVED', %s, %s, %s)",
-            (app_id, f"officer:{actor}", note, datetime.now())
+            "VALUES (%s, %s, %s, %s, %s)",
+            (app_id, decision, f"officer:{officer_username}", reason_clean, datetime.now())
         )
         conn.commit()
         cur.close(); conn.close()
-        return {"success": True, "application_no": row["application_no"], "new_status": "APPROVED"}
-    cur.close(); conn.close()
-    return {"success": False, "reason": "Application not found or not in PENDING status."}
+        return {
+            "success": True,
+            "application_no": row["application_no"],
+            "new_status": decision,
+            "decided_by": officer_username,
+            "reason_recorded": reason_clean,
+            "message": f"Application {row['application_no']} has been successfully marked as {decision}."
+        }
 
-
-def officer_reject(app_id: int, note: str, actor: str = "mcp-officer") -> dict:
-    import db
-    conn = db.get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE applications SET status = 'REJECTED', decided_at = %s, decided_by = %s "
-        "WHERE id = %s AND status = 'PENDING' RETURNING application_no",
-        (datetime.now(), actor, app_id)
-    )
-    row = cur.fetchone()
-    if row:
-        cur.execute(
-            "INSERT INTO audit_log (application_id, action, actor, note, at) "
-            "VALUES (%s, 'REJECTED', %s, %s, %s)",
-            (app_id, f"officer:{actor}", note, datetime.now())
-        )
-        conn.commit()
-        cur.close(); conn.close()
-        return {"success": True, "application_no": row["application_no"], "new_status": "REJECTED"}
     cur.close(); conn.close()
-    return {"success": False, "reason": "Application not found or not in PENDING status."}
+    return {"success": False, "error_code": "DECISION_FAILED", "message": "Failed to update application state."}

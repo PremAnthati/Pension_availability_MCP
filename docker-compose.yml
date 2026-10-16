@@ -108,7 +108,7 @@ services:
   eval:
     build:
       context: .
-      dockerfile: eval/Dockerfile.combined
+      dockerfile: evals/Dockerfile
     ports:
       - "8003:8003"
     environment:

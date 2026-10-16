@@ -58,3 +58,4 @@
 
 #### Full Native REST/JSON API in Flask Core
 Currently, because legacy portal endpoints were written for HTML form submissions, the MCP server invokes Python database routines directly (`db.py` / `portal_client.py`). With additional development time, we would refactor the Flask core to expose first-class JSON endpoints authenticated via Bearer tokens for all actions, completely abstracting the database layer behind clean HTTP microservices.
+

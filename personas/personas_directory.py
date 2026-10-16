@@ -137,7 +137,7 @@ CITIZEN_PERSONAS: List[CitizenPersona] = [
         id="CITIZEN_04",
         name="Tarun Saikia",
         age=59,
-        dob="20/11/1964",  # Just under 60
+        dob="20/11/1966",  # 59 years old in 2026 (turning 60 in Nov 2026)
         village="Rajapara Gaon",
         block="Rajapara",
         mobile="9871000004",
@@ -312,3 +312,4 @@ OFFICER_PERSONAS: List[OfficerPersona] = [
         test_scenario="Officer attempts to access and decide a case in Sonari (must fail with FORBIDDEN_BLOCK_SCOPE), and attempts to reject a case with 'no' as a reason (must fail with INSUFFICIENT_REASON)."
     )
 ]
+

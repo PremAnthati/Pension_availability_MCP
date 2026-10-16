@@ -1,0 +1,289 @@
+{
+  "evaluated_at": "2026-10-16T15:06:43.846688",
+  "total_tests": 40,
+  "passed": 40,
+  "failed": 0,
+  "pass_rate_percent": 100.0,
+  "results": [
+    {
+      "category": "PARITY",
+      "test_name": "valid_data_parity",
+      "passed": true,
+      "details": "Errors: []",
+      "timestamp": "2026-10-16T15:06:43.738813"
+    },
+    {
+      "category": "PARITY",
+      "test_name": "sanitization_parity",
+      "passed": true,
+      "details": "Spaces & hyphens stripped properly.",
+      "timestamp": "2026-10-16T15:06:43.738847"
+    },
+    {
+      "category": "BOUNDARY",
+      "test_name": "exact_60_boundary_accepted",
+      "passed": true,
+      "details": "60th birthday accepted.",
+      "timestamp": "2026-10-16T15:06:43.738898"
+    },
+    {
+      "category": "BOUNDARY",
+      "test_name": "under_60_boundary_rejected",
+      "passed": true,
+      "details": "59y 11m rejected with UNDERAGE.",
+      "timestamp": "2026-10-16T15:06:43.738915"
+    },
+    {
+      "category": "BOUNDARY",
+      "test_name": "bank_8_digits_rejected",
+      "passed": true,
+      "details": "8-digit account rejected.",
+      "timestamp": "2026-10-16T15:06:43.739026"
+    },
+    {
+      "category": "BOUNDARY",
+      "test_name": "bank_9_digits_accepted",
+      "passed": true,
+      "details": "9-digit account accepted.",
+      "timestamp": "2026-10-16T15:06:43.739038"
+    },
+    {
+      "category": "BOUNDARY",
+      "test_name": "bank_19_digits_rejected",
+      "passed": true,
+      "details": "19-digit account rejected.",
+      "timestamp": "2026-10-16T15:06:43.739046"
+    },
+    {
+      "category": "SAFETY",
+      "test_name": "prompt_injection_underage_enforced",
+      "passed": true,
+      "details": "SQL injection string and prompt override thwarted by server validation.",
+      "timestamp": "2026-10-16T15:06:43.739087"
+    },
+    {
+      "category": "SAFETY",
+      "test_name": "officer_cross_block_boundary_rejected",
+      "passed": true,
+      "details": "Officer blocked from deciding outside assigned block.",
+      "timestamp": "2026-10-16T15:06:43.745435"
+    },
+    {
+      "category": "SAFETY",
+      "test_name": "officer_boilerplate_reason_rejected",
+      "passed": true,
+      "details": "Boilerplate rejection reason rejected.",
+      "timestamp": "2026-10-16T15:06:43.745452"
+    },
+    {
+      "category": "CROSS_VISIBILITY",
+      "test_name": "mcp_submission_created",
+      "passed": true,
+      "details": "Application: SSP26108744",
+      "timestamp": "2026-10-16T15:06:43.753425"
+    },
+    {
+      "category": "CROSS_VISIBILITY",
+      "test_name": "visible_in_officer_queue",
+      "passed": true,
+      "details": "Application instantly visible in officer block queue.",
+      "timestamp": "2026-10-16T15:06:43.756225"
+    },
+    {
+      "category": "CROSS_VISIBILITY",
+      "test_name": "officer_approval_recorded",
+      "passed": true,
+      "details": "Approval committed successfully.",
+      "timestamp": "2026-10-16T15:06:43.762486"
+    },
+    {
+      "category": "CROSS_VISIBILITY",
+      "test_name": "citizen_status_reflects_approval",
+      "passed": true,
+      "details": "Citizen status portal shows APPROVED.",
+      "timestamp": "2026-10-16T15:06:43.765255"
+    },
+    {
+      "category": "CROSS_VISIBILITY",
+      "test_name": "audit_trail_complete",
+      "passed": true,
+      "details": "Audit trail entries: ['SUBMIT', 'APPROVED']",
+      "timestamp": "2026-10-16T15:06:43.768148"
+    },
+    {
+      "category": "DEEMED_APPROVAL",
+      "test_name": "case_at_16_days_prior_state",
+      "passed": true,
+      "details": "Pre-condition: Overdue case is PENDING.",
+      "timestamp": "2026-10-16T15:06:43.777190"
+    },
+    {
+      "category": "DEEMED_APPROVAL",
+      "test_name": "auto_approval_execution",
+      "passed": true,
+      "details": "15-day overdue application automatically updated to DEEMED_APPROVED.",
+      "timestamp": "2026-10-16T15:06:43.781610"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_01_Champa Devi_submit",
+      "passed": true,
+      "details": "Outcome: Application SSP26470823 has been successfully recorded in the portal.",
+      "timestamp": "2026-10-16T15:06:43.788822"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_01_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.791294"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_01_SELECT block FROM applications WHER",
+      "passed": true,
+      "details": "Expected Sonari, got Sonari",
+      "timestamp": "2026-10-16T15:06:43.791384"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_01_SELECT count(*) FROM audit_log al J",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.791994"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_02_Kamla Roy_submit",
+      "passed": true,
+      "details": "Outcome: Application SSP26990612 has been successfully recorded in the portal.",
+      "timestamp": "2026-10-16T15:06:43.798976"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_02_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.801562"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_02_SELECT applicant_name FROM applicat",
+      "passed": true,
+      "details": "Expected Kamla Roy, got Kamla Roy",
+      "timestamp": "2026-10-16T15:06:43.801689"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_03_Phulwa Devi_submit",
+      "passed": true,
+      "details": "Outcome: Application SSP26655529 has been successfully recorded in the portal.",
+      "timestamp": "2026-10-16T15:06:43.809437"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_03_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.812214"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_04_Tarun Saikia_underage_rejection",
+      "passed": true,
+      "details": "Underage applicant properly refused.",
+      "timestamp": "2026-10-16T15:06:43.812327"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_04_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 0, got 0",
+      "timestamp": "2026-10-16T15:06:43.815696"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_05_Sunita Bai_duplicate_refusal",
+      "passed": true,
+      "details": "Duplicate active application blocked.",
+      "timestamp": "2026-10-16T15:06:43.819214"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_05_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.822561"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_05_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 0, got 0",
+      "timestamp": "2026-10-16T15:06:43.822688"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_06_Gopal Singh_withdraw",
+      "passed": true,
+      "details": "Previous application withdrawn.",
+      "timestamp": "2026-10-16T15:06:43.829963"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_06_Gopal Singh_reapply",
+      "passed": true,
+      "details": "New application with correct bank accepted.",
+      "timestamp": "2026-10-16T15:06:43.837731"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_06_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.840231"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_06_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 1, got 1",
+      "timestamp": "2026-10-16T15:06:43.840352"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_06_SELECT ifsc FROM applications WHERE",
+      "passed": true,
+      "details": "Expected CNRB0009988, got CNRB0009988",
+      "timestamp": "2026-10-16T15:06:43.840481"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_07_Maniram Gogoi_out_of_scope_rejection",
+      "passed": true,
+      "details": "Out-of-scope block correctly caught.",
+      "timestamp": "2026-10-16T15:06:43.840612"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_07_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 0, got 0",
+      "timestamp": "2026-10-16T15:06:43.843919"
+    },
+    {
+      "category": "PERSONA_REPLAY",
+      "test_name": "CITIZEN_08_Adversary Attempt_underage_rejection",
+      "passed": true,
+      "details": "Underage applicant properly refused.",
+      "timestamp": "2026-10-16T15:06:43.844020"
+    },
+    {
+      "category": "PERSONA_DB_ASSERTION",
+      "test_name": "CITIZEN_08_SELECT count(*) FROM applications W",
+      "passed": true,
+      "details": "Expected 0, got 0",
+      "timestamp": "2026-10-16T15:06:43.846639"
+    }
+  ]
+}

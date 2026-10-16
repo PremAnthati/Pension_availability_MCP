@@ -73,3 +73,4 @@ Our automated suite runs 22 assertions across parity, boundary, security, cross-
 The code, Docker deployment, and full evaluation suite are live in our private repository `sewasetu-assistant`. 
 
 Thank you, Director. The counter is now open to every citizen’s assistant."
+

@@ -50,8 +50,8 @@ class EvalSuite:
         conn = db.get_db()
         cur = conn.cursor()
 
-        # Clean existing test mobiles (9871000001 - 9871000008)
-        test_mobiles = [p.mobile for p in CITIZEN_PERSONAS]
+        # Clean existing test mobiles (9871000001 - 9871000008, 9871000088)
+        test_mobiles = [p.mobile for p in CITIZEN_PERSONAS] + ["9871000088", "9871000099"]
         for m in test_mobiles:
             cur.execute("DELETE FROM audit_log WHERE application_id IN (SELECT id FROM applications WHERE mobile = %s)", (m,))
             cur.execute("DELETE FROM applications WHERE mobile = %s", (m,))
@@ -192,9 +192,9 @@ class EvalSuite:
     def test_cross_visibility(self):
         print("\n=== Running Cross-Visibility Tests ===")
         # 1. Submit via MCP tool logic
-        mobile = "9871000001"  # Champa Devi
+        mobile = "9871000088"  # Dedicated Cross-Visibility test mobile
         sub_res = pc.citizen_submit_application(mobile, {
-            "applicant_name": "Champa Devi",
+            "applicant_name": "Cross Vis Applicant",
             "village": "Narayantola",
             "block": "Sonari",
             "gender": "Female",
@@ -336,7 +336,8 @@ class EvalSuite:
             cur = conn.cursor()
             for assertion in p.db_assertions:
                 cur.execute(assertion["query"])
-                val = cur.fetchone()[0]
+                row = cur.fetchone()
+                val = list(row.values())[0] if row else None
                 passed = val == assertion["expected"]
                 self.record("PERSONA_DB_ASSERTION", f"{p.id}_{assertion['query'][:35]}", passed, f"Expected {assertion['expected']}, got {val}")
             cur.close(); conn.close()
@@ -382,3 +383,4 @@ class EvalSuite:
 if __name__ == "__main__":
     suite = EvalSuite()
     suite.run_all()
+

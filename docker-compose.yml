@@ -4,37 +4,46 @@ services:
     environment:
       POSTGRES_DB: sewasetu
       POSTGRES_USER: sewasetu
-      POSTGRES_PASSWORD: sewasetu123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-before-deploying}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./app/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./seed/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./app/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sewasetu"]
+      test: ["CMD-SHELL", "pg_isready -U sewasetu -d sewasetu"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   app:
-    build: ./app
-    ports:
-      - "8000:8000"
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: sewasetu
+      DB_USER: sewasetu
+      DB_PASS: ${POSTGRES_PASSWORD:-change-me-before-deploying}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-before-deploying}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in the environment}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
     depends_on:
       db:
         condition: service_healthy
       smsgw:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - uploads:/var/sewasetu/uploads
       - applogs:/var/log/sewasetu
 
   scheduler:
-    build: ./app
-    command: ["sh", "-c", "until python /app/scripts/deemed_approval.py; do sleep 5; done; exec cron -f"]
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    healthcheck:
+      disable: true
+    command: ["sh", "-c", "while true; do python /app/scripts/deemed_approval.py; sleep 86400; done"]
     depends_on:
       db:
         condition: service_healthy
@@ -46,85 +55,73 @@ services:
     expose:
       - "8025"
 
-  # ── Citizen MCP Server ────────────────────────────────────────────────────
   citizen-mcp:
     build:
-      context: ./mcp
-      dockerfile: Dockerfile
-    command: python citizen_server.py
-    ports:
-      - "8001:8001"
+      context: .
+      dockerfile: mcp/Dockerfile
+    command: ["python", "citizen_server.py"]
     environment:
       CITIZEN_MCP_PORT: "8001"
-      # The token audience must match the URL clients use to reach this server.
-      # When behind nginx on PUBLIC_BASE_URL, clients reach /mcp/citizen.
-      CITIZEN_MCP_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}/mcp/citizen
+      MCP_HEALTH_PORT: "8001"
+      CITIZEN_MCP_URL: ${PUBLIC_BASE_URL:-http://localhost}/mcp/citizen
       PORTAL_URL: http://app:8000
-      PORTAL_ISSUER: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      # Restrict AI applications to these blocks (all 6 by default).
+      PORTAL_ISSUER: ${PUBLIC_BASE_URL:-http://localhost}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
       MCP_ALLOWED_BLOCKS: ${MCP_ALLOWED_BLOCKS:-Sonari,Rajapara,Dhemaji Pathar,Borgaon,Namti,Khelua}
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: sewasetu
       DB_USER: sewasetu
-      DB_PASS: sewasetu123
-    volumes:
-      - ./app/config:/app/config:ro
+      DB_PASS: ${POSTGRES_PASSWORD:-change-me-before-deploying}
     depends_on:
       db:
         condition: service_healthy
       app:
         condition: service_started
 
-  # ── Officer MCP Server ────────────────────────────────────────────────────
   officer-mcp:
     build:
-      context: ./mcp
-      dockerfile: Dockerfile
-    command: python officer_server.py
-    ports:
-      - "8002:8002"
+      context: .
+      dockerfile: mcp/Dockerfile
+    command: ["python", "officer_server.py"]
     environment:
       OFFICER_MCP_PORT: "8002"
-      OFFICER_MCP_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}/mcp/officer
+      MCP_HEALTH_PORT: "8002"
+      OFFICER_MCP_URL: ${PUBLIC_BASE_URL:-http://localhost}/mcp/officer
       PORTAL_URL: http://app:8000
-      PORTAL_ISSUER: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      PORTAL_ISSUER: ${PUBLIC_BASE_URL:-http://localhost}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: sewasetu
       DB_USER: sewasetu
-      DB_PASS: sewasetu123
-    volumes:
-      - ./app/config:/app/config:ro
+      DB_PASS: ${POSTGRES_PASSWORD:-change-me-before-deploying}
     depends_on:
       db:
         condition: service_healthy
       app:
         condition: service_started
 
-  # ── Eval Dashboard ────────────────────────────────────────────────────────
   eval:
     build:
       context: .
       dockerfile: evals/Dockerfile
-    ports:
-      - "8003:8003"
     environment:
       EVAL_PORT: "8003"
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: sewasetu
       DB_USER: sewasetu
-      DB_PASS: sewasetu123
+      DB_PASS: ${POSTGRES_PASSWORD:-change-me-before-deploying}
     volumes:
-      - ./eval/results:/app/eval/results
+      - ./app:/app/app:ro
+      - ./mcp:/app/mcp:ro
+      - ./personas:/app/personas:ro
+      - ./evals:/app/evals
     depends_on:
       db:
         condition: service_healthy
 
-  # ── nginx reverse proxy ───────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     ports:
@@ -132,10 +129,14 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - app
-      - citizen-mcp
-      - officer-mcp
-      - eval
+      app:
+        condition: service_healthy
+      citizen-mcp:
+        condition: service_started
+      officer-mcp:
+        condition: service_started
+      eval:
+        condition: service_healthy
 
 volumes:
   pgdata:

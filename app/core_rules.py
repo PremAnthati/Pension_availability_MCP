@@ -230,3 +230,4 @@ def mask_sensitive_string(val: str, visible_end: int = 4) -> str:
     if len(val_str) <= visible_end:
         return "*" * len(val_str)
     return "*" * (len(val_str) - visible_end) + val_str[-visible_end:]
+

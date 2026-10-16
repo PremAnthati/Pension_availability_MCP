@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime data
+uploads/
+*.log
+
+# VCS and local configuration
+.git/
+.gitignore
+.env
+.DS_Store
+
+# Evaluation output
+evals/eval_results.json

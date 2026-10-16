@@ -1,0 +1,23 @@
+# Combined Dockerfile for eval service
+# Builds from repo root so it can copy both eval/ and mcp/ directories.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY eval/requirements.txt /tmp/eval-reqs.txt
+RUN pip install --no-cache-dir -r /tmp/eval-reqs.txt && \
+    pip install --no-cache-dir psycopg2-binary==2.9.9
+
+# Copy eval and mcp code
+COPY eval/ /app/eval/
+COPY mcp/ /app/mcp/
+COPY app/config/ /app/config/
+
+# Results directory persisted via volume
+RUN mkdir -p /app/eval/results
+
+WORKDIR /app/eval
+EXPOSE 8003
+CMD ["python", "dashboard_app.py"]
+

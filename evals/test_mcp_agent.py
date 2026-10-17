@@ -9,7 +9,7 @@ Simulates two AI assistants:
 import json
 import httpx
 
-PUBLIC_BASE = "https://assist-scholarship-bargain-thesaurus.trycloudflare.com"
+PUBLIC_BASE = "https://pursuant-highways-earth-wed.trycloudflare.com"
 CITIZEN_URL = f"{PUBLIC_BASE}/mcp/citizen"
 OFFICER_URL = f"{PUBLIC_BASE}/mcp/officer"
 

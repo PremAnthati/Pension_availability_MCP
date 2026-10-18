@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: sewasetu-pension
+    runtime: docker
+    dockerfilePath: Dockerfile.render
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sewasetu-db
+          property: connectionString
+
+databases:
+  - name: sewasetu-db
+    databaseName: sewasetu
+    user: sewasetu
+    plan: free
+

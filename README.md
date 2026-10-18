@@ -30,6 +30,36 @@ the portal behind HTTPS; some applications refuse to sign in over plain HTTP.
 PUBLIC_BASE_URL=https://sewasetu.example.in ADMIN_PASSWORD=pick-something docker compose up --build -d
 ```
 
+## Deploying on Render (Free Tier / Production)
+
+This repository includes a production-ready Render blueprint (`render.yaml`) and unified container (`Dockerfile.render`).
+
+### Option 1: Blueprint Deployment (Web Service + Render PostgreSQL)
+1. Go to **[Render Dashboard](https://dashboard.render.com/)**.
+2. Click **New +** → **Blueprint**.
+3. Connect repository: `https://github.com/PremAnthati/Pension_availability_MCP.git`.
+4. Render automatically configures:
+   - **Web Service** (`sewasetu-pension`) running the Docker container.
+   - **PostgreSQL Database** (`sewasetu-db`) with automatic connection string mapping.
+5. Click **Apply**.
+   The container automatically seeds the database, verifies migrations, runs initial evaluations, and routes all endpoints.
+
+### Option 2: Single Web Service Deployment (Embedded PostgreSQL)
+1. Click **New +** → **Web Service** → Connect this repository.
+2. Select **Docker** environment (specify Dockerfile path: `Dockerfile.render`).
+3. Under Environment Variables:
+   - `PORT`: `10000` (or Render's default `$PORT`)
+   - `ADMIN_PASSWORD`: Your chosen admin password
+4. Click **Deploy**. The container automatically starts an embedded PostgreSQL instance and bootstraps the schema.
+
+### Render Endpoints Once Deployed:
+- **Main Portal**: `https://<your-service>.onrender.com/`
+- **Citizen MCP Endpoint**: `https://<your-service>.onrender.com/mcp/citizen`
+- **Officer MCP Endpoint**: `https://<your-service>.onrender.com/mcp/officer`
+- **Eval Dashboard**: `https://<your-service>.onrender.com/eval-dashboard`
+- **Department Admin**: `https://<your-service>.onrender.com/admin`
+- **SMS Gateway Console**: `https://<your-service>.onrender.com/__gateway/`
+
 ## What the portal does
 
 Citizen flow: mobile → OTP → personal details → address → bank details →

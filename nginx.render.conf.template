@@ -1,0 +1,80 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout  65;
+    client_max_body_size 25M;
+
+    upstream portal {
+        server 127.0.0.1:8000;
+    }
+    upstream citizen_mcp {
+        server 127.0.0.1:8001;
+    }
+    upstream officer_mcp {
+        server 127.0.0.1:8002;
+    }
+    upstream eval_dash {
+        server 127.0.0.1:8003;
+    }
+
+    server {
+        listen ${PORT};
+        server_name _;
+
+        # ── Citizen MCP — streamable HTTP with SSE ──────────────────────────
+        location /mcp/citizen {
+            proxy_pass http://citizen_mcp/mcp;
+            proxy_http_version 1.1;
+            proxy_set_header Connection '';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_buffering off;
+            proxy_read_timeout 3600;
+            proxy_send_timeout 3600;
+            chunked_transfer_encoding on;
+        }
+
+        # ── Officer MCP — streamable HTTP with SSE ──────────────────────────
+        location /mcp/officer {
+            proxy_pass http://officer_mcp/mcp;
+            proxy_http_version 1.1;
+            proxy_set_header Connection '';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_buffering off;
+            proxy_read_timeout 3600;
+            proxy_send_timeout 3600;
+            chunked_transfer_encoding on;
+        }
+
+        # ── Eval dashboard ──────────────────────────────────────────────────
+        location /eval-dashboard {
+            proxy_pass http://eval_dash/eval-dashboard;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        }
+
+        # ── Portal (everything else, including /__gateway/ proxy) ───────────
+        location / {
+            proxy_pass http://portal;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_http_version 1.1;
+            proxy_buffering off;
+        }
+    }
+}
+

@@ -25,17 +25,23 @@ with open(CONFIG_PATH) as fh:
     config.read_file(fh)
 
 SLA_DAYS = config.getint("pension", "sla_days")
-SMS_GATEWAY_URL = config.get("app", "sms_gateway_url")
+SMS_GATEWAY_URL = os.environ.get("SMS_GATEWAY_URL") or config.get("app", "sms_gateway_url")
 
 
 def main():
-    conn = psycopg2.connect(
-        host=os.environ.get("DB_HOST", config.get("database", "host")),
-        port=os.environ.get("DB_PORT", config.get("database", "port")),
-        dbname=os.environ.get("DB_NAME", config.get("database", "name")),
-        user=os.environ.get("DB_USER", config.get("database", "user")),
-        password=os.environ.get("DB_PASS", config.get("database", "password")),
-    )
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(db_url)
+    else:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", config.get("database", "host")),
+            port=os.environ.get("DB_PORT", config.get("database", "port")),
+            dbname=os.environ.get("DB_NAME", config.get("database", "name")),
+            user=os.environ.get("DB_USER", config.get("database", "user")),
+            password=os.environ.get("DB_PASS", config.get("database", "password")),
+        )
     cur = conn.cursor()
     cutoff = datetime.now() - timedelta(days=SLA_DAYS)
     cur.execute(

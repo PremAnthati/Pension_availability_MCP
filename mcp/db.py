@@ -41,6 +41,14 @@ ACTIVE_STATUSES = core_rules.ACTIVE_STATUSES
 
 
 def get_db():
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        return psycopg2.connect(
+            db_url,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+        )
     return psycopg2.connect(
         host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
         user=DB_USER, password=DB_PASS,
